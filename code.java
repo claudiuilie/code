@@ -1265,3 +1265,276 @@ de inlocuit toHtmlReport in testcontext
         throw new TestReportException(message);
     }
 }
+
+package com.ing.P09498.cucumber.plugins.logger.evidence.compression;
+
+import lombok.Getter;
+
+@Getter
+public class CompressedText {
+
+    private final String value;
+    private final boolean compressed;
+    private final int originalSize;
+    private final int storedSize;
+
+    private CompressedText(
+            final String value,
+            final boolean compressed,
+            final int originalSize,
+            final int storedSize
+    ) {
+        this.value = value;
+        this.compressed = compressed;
+        this.originalSize = originalSize;
+        this.storedSize = storedSize;
+    }
+
+    public static CompressedText plain(final String value) {
+        final String safeValue = value == null ? "" : value;
+        return new CompressedText(
+                safeValue,
+                false,
+                safeValue.length(),
+                safeValue.length()
+        );
+    }
+
+    public static CompressedText compressed(
+            final String value,
+            final int originalSize,
+            final int storedSize
+    ) {
+        return new CompressedText(
+                value,
+                true,
+                originalSize,
+                storedSize
+        );
+    }
+}
+
+package com.ing.P09498.cucumber.plugins.logger.evidence.compression;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.Objects;
+import java.util.zip.GZIPOutputStream;
+
+public final class TextCompressionUtils {
+
+    private static final int MIN_COMPRESSION_SIZE = 1024;
+
+    private TextCompressionUtils() {
+    }
+
+    public static CompressedText compressIfUseful(final String text) {
+        if (Objects.isNull(text) || text.length() < MIN_COMPRESSION_SIZE) {
+            return CompressedText.plain(text);
+        }
+
+        try {
+            final byte[] originalBytes = text.getBytes(StandardCharsets.UTF_8);
+            final byte[] compressedBytes = gzip(originalBytes);
+            final String base64 = Base64.getEncoder().encodeToString(compressedBytes);
+
+            if (base64.length() >= text.length()) {
+                return CompressedText.plain(text);
+            }
+
+            return CompressedText.compressed(
+                    base64,
+                    text.length(),
+                    base64.length()
+            );
+        } catch (final Exception e) {
+            return CompressedText.plain(text);
+        }
+    }
+
+    private static byte[] gzip(final byte[] bytes) throws Exception {
+        final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+        try (final GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteArrayOutputStream)) {
+            gzipOutputStream.write(bytes);
+        }
+
+        return byteArrayOutputStream.toByteArray();
+    }
+}
+
+package com.ing.P09498.cucumber.plugins.logger;
+
+import com.ing.P09498.cucumber.plugins.logger.evidence.compression.CompressedText;
+import com.ing.P09498.cucumber.plugins.logger.evidence.compression.TextCompressionUtils;
+import lombok.Getter;
+
+@Getter
+public class TestLogArgument {
+
+    private final int index;
+    private final CompressedText content;
+
+    public TestLogArgument(final int index, final String value) {
+        this.index = index;
+        this.content = TextCompressionUtils.compressIfUseful(value);
+    }
+
+    public String label() {
+        return "Arg" + index + ": ";
+    }
+
+    public boolean isCompressed() {
+        return content.isCompressed();
+    }
+
+    public String value() {
+        return content.getValue();
+    }
+
+    public int originalSize() {
+        return content.getOriginalSize();
+    }
+
+    public int storedSize() {
+        return content.getStoredSize();
+    }
+}
+
+package com.ing.P09498.cucumber.plugins.logger;
+
+import com.ing.P09498.cucumber.plugins.logger.utils.TestTimeUtils;
+import lombok.Getter;
+import lombok.Setter;
+import org.slf4j.event.Level;
+import org.slf4j.helpers.FormattingTuple;
+import org.slf4j.helpers.MessageFormatter;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static com.ing.P09498.utils.TransformationUtils.objectToPrettyString;
+
+@Getter
+@Setter
+public class TestLog {
+
+    private final String formattedMessage;
+    private final String timestamp;
+    private final List<TestLogArgument> args = new ArrayList<>();
+    private final String message;
+    private final String trace;
+    private Level level;
+    private boolean isSimpleLog = false;
+
+    public TestLog(final String message, final Level level, final Object... objects) {
+        this.timestamp = TestTimeUtils.dateNow();
+        this.formattedMessage = formatMessage(message, objects);
+        this.message = message;
+        this.level = level;
+        this.trace = generateTrace();
+    }
+
+    public String logLine() {
+        if (isSimpleLog) {
+            return formattedMessage;
+        }
+
+        return String.format("%s %s - %s", timestamp, level, formattedMessage);
+    }
+
+    private String formatMessage(final String message, final Object... objects) {
+        final FormattingTuple formattingTuple = MessageFormatter.arrayFormat(message, objects);
+
+        for (int index = 0; index < objects.length; index++) {
+            final String prettyArgument = objectToPrettyString(objects[index]);
+            args.add(new TestLogArgument(index, prettyArgument));
+        }
+
+        return formattingTuple.getMessage();
+    }
+
+    private String generateTrace() {
+        final StackTraceElement[] stackTrace = new Exception().getStackTrace();
+        final StackTraceElement element = stackTrace[3];
+
+        return String.format("%s:%s", element.getFileName(), element.getLineNumber());
+    }
+
+    public boolean hasErrors() {
+        return isError() || isWarn();
+    }
+
+    public boolean isWarn() {
+        return level.equals(Level.WARN);
+    }
+
+    public boolean isError() {
+        return level.equals(Level.ERROR);
+    }
+}
+
+package com.ing.P09498.cucumber.plugins.logger.evidence;
+
+import org.jsoup.nodes.Element;
+
+public final class ReportScript {
+
+    private ReportScript() {
+    }
+
+    public static Element inlineScriptElement() {
+        return HtmlElement.element("script").html(SCRIPT);
+    }
+
+    private static final String SCRIPT = """
+            async function dg(e){if(e.dataset.loaded==='true')return;try{e.textContent='Loading...';const b=Uint8Array.from(atob(e.dataset.gz),c=>c.charCodeAt(0));if(!('DecompressionStream'in window)){e.textContent='Browser does not support gzip decompression';return;}const s=new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'));const t=await new Response(s).text();e.textContent=t;e.dataset.loaded='true';e.removeAttribute('data-gz');}catch(x){e.textContent='Failed to decompress content: '+x.message;}}
+            document.addEventListener('click',e=>{const t=e.target.closest('[data-gz]');if(t)dg(t);});
+            document.addEventListener('toggle',e=>{if(e.target.open){e.target.querySelectorAll('[data-gz]').forEach(dg);}},true);
+            """;
+}
+
+modificare in reportElementHelper
+
+    private static Element buildHead() {
+    return HtmlElement.head()
+            .appendChild(HtmlElement.meta("text/html; charset=UTF-8"))
+            .appendChild(HtmlElement.title(REPORT_TITLE))
+            .appendChild(ReportStyle.inlineStyleElement())
+            .appendChild(ReportScript.inlineScriptElement());
+}
+
+
+private static Element logArgumentBreakdownLine(final TestLogArgument argument) {
+    return HtmlElement.pre(LOG_BREAKDOWN_ROW_CLASSES)
+            .appendChild(HtmlElement.strong("ll", argument.label()))
+            .appendChild(logArgumentValue(argument));
+}
+
+private static Element logArgumentValue(final TestLogArgument argument) {
+    if (!argument.isCompressed()) {
+        return HtmlElement.span("lv", argument.value());
+    }
+
+    return HtmlElement.span("lv cz", compressedArgumentPlaceholder(argument))
+            .attr("data-gz", argument.value())
+            .attr("data-loaded", "false")
+            .attr("title", compressedArgumentTitle(argument));
+}
+
+private static String compressedArgumentPlaceholder(final TestLogArgument argument) {
+    return String.format(
+            "Compressed content. Click to load. Original: %s chars, stored: %s chars",
+            argument.originalSize(),
+            argument.storedSize()
+    );
+}
+
+private static String compressedArgumentTitle(final TestLogArgument argument) {
+    return String.format(
+            "Click to decompress. Original size: %s chars. Stored size: %s chars.",
+            argument.originalSize(),
+            argument.storedSize()
+    );
+}
