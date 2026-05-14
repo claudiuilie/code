@@ -1,3 +1,8 @@
+private static final String SCRIPT = """
+        async function dg(e){if(e.dataset.loaded==='true')return;try{const b=Uint8Array.from(atob(e.dataset.gz),c=>c.charCodeAt(0));if(!('DecompressionStream'in window))return;const s=new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'));e.textContent=await new Response(s).text();e.dataset.loaded='true';e.removeAttribute('data-gz');}catch(x){}}
+        document.addEventListener('toggle',e=>{if(e.target.open)e.target.querySelectorAll('[data-gz]').forEach(dg);},true);
+        """;
+
 package com.ing.P09498.cucumber.plugins.logger.evidence;
 
 import org.jsoup.Jsoup;
