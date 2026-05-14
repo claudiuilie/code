@@ -575,6 +575,7 @@ import io.cucumber.plugin.event.DataTableArgument;
 import io.cucumber.plugin.event.Status;
 import org.jsoup.nodes.Element;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -583,225 +584,53 @@ import java.util.stream.IntStream;
 
 public final class ReportElementHelper {
 
+    private static final String REPORT_TITLE = "Test Evidence";
+
+    private static final String CONTENT_CONTAINER_CLASSES = "container mt-2";
+    private static final String CONTENT_CARD_CLASSES = "card h-auto w-100 border border-gray shadow rounded";
+    private static final String CARD_HEADER_CONTAINER_CLASSES = "container p-2";
+    private static final String CARD_HEADER_CLASSES = "card-header text-center border border-gray shadow rounded";
+    private static final String CARD_BODY_CLASSES = "card-body p-5 pt-1 pb-1";
+
+    private static final String ROW_CENTER_CLASSES = "row justify-content-center";
+    private static final String SECTION_CARD_CLASSES = "w-100 card p-1 mt-2 text-secondary border-gray";
+    private static final String SECTION_TITLE_CLASSES = "border-bottom p-1 mb-2";
+    private static final String DETAILS_CLASSES = "p-1 mb-2 w-100 border shadow rounded border-gray";
+    private static final String STEP_DETAILS_CLASSES = "p-2 mb-2 w-100 border shadow rounded border-gray";
+    private static final String SUMMARY_CLASSES = "w-100 p-1 m-0";
+
+    private static final String BADGE_CLASSES = "text-info badge border mr-1 fw-normal";
+    private static final String FLOAT_BADGE_CLASSES = "ml-1 badge border border-gray fw-normal runtime-badge";
+    private static final String RUNTIME_BADGE_CLASSES = "text-info badge fw-normal runtime-badge";
+
+    private static final String LOGS_CONTAINER_CLASSES = "container rounded p-2 m-0 logs-container";
+    private static final String ERRORS_CONTAINER_CLASSES = "container rounded p-2 m-0 text-danger errors-container";
+    private static final String LOG_SUMMARY_CLASSES = "log-line row container";
+    private static final String LOG_BREAKDOWN_CONTAINER_CLASSES = "container p-2 log-breakdown-container";
+    private static final String LOG_BREAKDOWN_ROW_CLASSES = "row border-bottom m-0 log-breakdown-row";
+
+    private static final String TABLE_CONTAINER_CLASSES = "container table-container";
+    private static final String TABLE_CLASSES = "table table-sm table-bordered text-secondary p-0 mb-1";
+
     private ReportElementHelper() {
     }
 
+    // -------------------------------------------------------------------------
+    // Public API
+    // -------------------------------------------------------------------------
+
     public static Element htmlReport(final TestContext testContext) {
         return HtmlElement.html()
-                .appendChild(head())
-                .appendChild(body(testContext));
-    }
-
-    private static Element head() {
-        return HtmlElement.head()
-                .appendChild(HtmlElement.meta("text/html; charset=UTF-8"))
-                .appendChild(HtmlElement.title("Test Evidence"))
-                .appendChild(ReportStyle.styleElement());
-    }
-
-    private static Element body(final TestContext testContext) {
-        return HtmlElement.body()
-                .appendChild(contentContainer(testContext))
-                .appendChild(HtmlElement.div("content-margin"));
+                .appendChild(buildHead())
+                .appendChild(buildBody(testContext));
     }
 
     public static Element contentContainer(final TestContext testContext) {
-        final Element stepCardBody = HtmlElement.div("card-body p-5 pt-1 pb-1");
-
-        testContext.getStepContextMap()
-                .forEach((uuid, stepContext) -> stepCardBody.appendChild(step(stepContext)));
-
-        stepCardBody.appendChild(separator());
-        stepCardBody.appendChild(moreDetailsContainer(testContext));
-
-        return HtmlElement.div("container mt-2")
-                .appendChild(HtmlElement.div("row mb-3"))
-                .appendChild(HtmlElement.div("card h-auto w-100 border border-gray shadow rounded")
-                        .appendChild(contentCardHeader(testContext))
-                        .appendChild(stepCardBody));
-    }
-
-    private static Element contentCardHeader(final TestContext testContext) {
-        final Element testBadgeContainer = HtmlElement.div("text-secondary row pb-1 justify-content-center")
-                .appendChild(badge("Started On: " + testContext.getStartTime()))
-                .appendChild(badge("Total Runtime: " + testContext.getDuration()));
-
-        return HtmlElement.div("container p-2")
-                .appendChild(HtmlElement.div("card-header text-center border border-gray shadow rounded")
-                        .appendChild(testStatusBadge(testContext.getStatus()))
-                        .appendChild(HtmlElement.element("h5")
-                                .addClass("text-secondary")
-                                .addClass("fs-4")
-                                .addClass("mb-2")
-                                .addClass("p-1")
-                                .addClass("border-bottom")
-                                .text(HtmlElement.nullSafe(testContext.getName())))
-                        .appendChild(testBadgeContainer));
+        return buildReportContainer(testContext);
     }
 
     public static Element step(final StepContext stepContext) {
-        return row(
-                HtmlElement.details("p-2 mb-2 w-100 border shadow rounded border-gray")
-                        .appendChild(stepSummary(stepContext))
-                        .appendChild(stepArgumentsCard(stepContext.getStepArgument()))
-                        .appendChild(stepLogsCard(stepContext.getTestRunLogs()))
-                        .appendChild(stepErrorsCard(stepContext.getException()))
-        );
-    }
-
-    private static Element stepSummary(final StepContext stepContext) {
-        return HtmlElement.summary("w-100 p-1 m-0")
-                .appendChild(HtmlElement.span("step-keyword", HtmlElement.nullSafe(stepContext.getKeyword())))
-                .appendChild(HtmlElement.span("text-secondary", HtmlElement.nullSafe(stepContext.getName())))
-                .appendChild(stepStatusBadge(
-                        stepContext.getStatus(),
-                        hasTestRunLogsErrors(stepContext.getTestRunLogs()),
-                        Objects.nonNull(stepContext.getException())
-                ))
-                .appendChild(HtmlElement.small(
-                        "text-info badge fw-normal runtime-badge",
-                        TestTimeUtils.durationToTimestamp(stepContext.getDuration())
-                ));
-    }
-
-    private static boolean hasTestRunLogsErrors(final List<TestLog> testRunLogs) {
-        return Objects.nonNull(testRunLogs) && testRunLogs.stream().anyMatch(TestLog::hasErrors);
-    }
-
-    private static Element moreDetailsContainer(final TestContext testContext) {
-        final Element reportInfoSummary = HtmlElement.summary("w-100 p-1 m-0")
-                .appendChild(HtmlElement.span("text-info", "More Info"));
-
-        final Element moreInfoContent = HtmlElement.details("p-1 mb-2 w-100 border shadow rounded border-gray");
-
-        if (Objects.nonNull(testContext.getAppVersion())) {
-            moreInfoContent.appendChild(moreInfoContent("App Version", testContext.getAppVersion()));
-        }
-
-        appendAmlAppLogsTextContent(moreInfoContent, reportInfoSummary, testContext);
-        appendVpcSequenceTextContent(moreInfoContent, reportInfoSummary, testContext);
-
-        moreInfoContent.appendChild(moreInfoContent("Test Run Count", String.valueOf(testContext.getTestExecutionCount())));
-        moreInfoContent.appendChild(moreInfoContent("Test Tags", String.join(" ", testContext.getTags())));
-        moreInfoContent.appendChild(moreInfoContent("Feature File", testContext.getFeatureFile()));
-
-        if (Objects.nonNull(testContext.getPreviousFailedStepContext())) {
-            reportInfoSummary.appendChild(statusWarningIcon());
-            moreInfoContent.appendChild(previousFailedStepContent(testContext.getPreviousFailedStepContext()));
-        }
-
-        moreInfoContent.prependChild(reportInfoSummary);
-
-        return row(moreInfoContent);
-    }
-
-    private static void appendVpcSequenceTextContent(
-            final Element moreInfoContent,
-            final Element reportInfoSummary,
-            final TestContext testContext
-    ) {
-        if (!testContext.getVpcContextLogs().isEmpty()) {
-            final boolean hasFatalVpc = testContext.getVpcContextLogs().stream().anyMatch(TestLog::isError);
-
-            if (hasFatalVpc) {
-                reportInfoSummary.appendChild(statusFailedIcon());
-            }
-
-            moreInfoContent.appendChild(logContent(
-                    testContext.getVpcContextLogs(),
-                    false,
-                    hasFatalVpc,
-                    "VPC Sequence",
-                    "*"
-            ));
-        }
-    }
-
-    private static void appendAmlAppLogsTextContent(
-            final Element moreInfoContent,
-            final Element reportInfoSummary,
-            final TestContext testContext
-    ) {
-        if (!testContext.getAmlAppLogs().isEmpty()) {
-            final boolean hasWarnings = testContext.getAmlAppLogs().stream().anyMatch(TestLog::isWarn);
-            final boolean hasErrors = testContext.getAmlAppLogs().stream().anyMatch(TestLog::isError);
-
-            if (hasErrors || hasWarnings) {
-                reportInfoSummary.appendChild(statusWarningIcon());
-            }
-
-            moreInfoContent.appendChild(logContent(
-                    testContext.getAmlAppLogs(),
-                    hasWarnings,
-                    hasErrors,
-                    "AML App Logs",
-                    "All Logs"
-            ));
-        }
-    }
-
-    private static Element logContent(
-            final List<TestLog> testLogs,
-            final boolean hasWarnings,
-            final boolean hasErrors,
-            final String title,
-            final String logsTitle
-    ) {
-        final Element summary = HtmlElement.summary("w-100 p-1 m-0")
-                .appendChild(HtmlElement.span("text-secondary", title));
-
-        final List<Element> contentList = new ArrayList<>();
-
-        if (hasErrors) {
-            final List<TestLog> errors = testLogs.stream()
-                    .filter(TestLog::isError)
-                    .toList();
-
-            summary.appendChild(logErrorsBadge("Errors: " + errors.size()));
-            contentList.add(stepLogsCard(errors, "Errors"));
-        }
-
-        if (hasWarnings) {
-            final List<TestLog> warnings = testLogs.stream()
-                    .filter(TestLog::isWarn)
-                    .toList();
-
-            summary.appendChild(logWarningsBadge("Warnings: " + warnings.size()));
-            contentList.add(stepLogsCard(warnings, "Warnings"));
-        }
-
-        contentList.add(stepLogsCard(testLogs, logsTitle));
-
-        return detailsContainer(summary, contentList);
-    }
-
-    private static Element testStatusBadge(final Status status) {
-        final Element statusContainer = HtmlElement.div("row justify-content-center");
-
-        if (Objects.nonNull(status) && status.is(Status.PASSED)) {
-            return statusContainer.appendChild(statusSuccessIcon());
-        }
-
-        return statusContainer.appendChild(statusFailedIcon());
-    }
-
-    public static Element stepStatusBadge(final Status status, final boolean hasErrors, final boolean hasException) {
-        final boolean isFailed = hasException || Objects.nonNull(status) && status.is(Status.FAILED);
-        final boolean isPassed = Objects.nonNull(status) && status.is(Status.PASSED);
-
-        if (isFailed) {
-            return statusFailedIcon();
-        }
-
-        if (isPassed) {
-            if (hasErrors) {
-                return statusWarningIcon();
-            }
-
-            return statusSuccessIcon();
-        }
-
-        return statusWarningIcon();
+        return row(buildStepDetails(stepContext));
     }
 
     public static Element stepArgumentsCard(final DataTableArgument dataTableArgument) {
@@ -813,11 +642,11 @@ public final class ReportElementHelper {
     }
 
     public static Element stepLogsCard(final List<TestLog> logs) {
-        return card("Logs", stepLogsContainer(logs));
+        return stepLogsCard(logs, "Logs");
     }
 
     public static Element stepLogsCard(final List<TestLog> logs, final String title) {
-        return card(title, stepLogsContainer(logs));
+        return card(title, buildLogsContainer(logs));
     }
 
     public static Element stepErrorsCard(final Throwable throwable) {
@@ -825,25 +654,21 @@ public final class ReportElementHelper {
             return HtmlElement.empty();
         }
 
-        return card("Errors", stepErrorContainer(throwable));
+        return card("Errors", buildErrorContainer(throwable));
     }
 
     public static Element textCard(final List<String> lines, final String title) {
         final Element content = sectionCard(title);
 
         if (Objects.isNull(lines) || lines.isEmpty()) {
-            content.appendChild(HtmlElement.div("container text-secondary")
-                    .appendChild(HtmlElement.small("", "No content found")));
+            content.appendChild(textLine("No content found"));
             return content;
         }
 
-        final Iterator<String> lineIterator = lines.listIterator();
+        final Iterator<String> lineIterator = lines.iterator();
 
         while (lineIterator.hasNext()) {
-            final String line = lineIterator.next();
-
-            content.appendChild(HtmlElement.div("container text-secondary")
-                    .appendChild(HtmlElement.small("", line)));
+            content.appendChild(textLine(lineIterator.next()));
 
             if (lineIterator.hasNext()) {
                 content.appendChild(separator());
@@ -860,19 +685,10 @@ public final class ReportElementHelper {
 
         final Element tableBody = HtmlElement.tbody();
 
-        rows.forEach(row -> {
-            final Element tableRow = HtmlElement.tr();
+        rows.forEach(row -> tableBody.appendChild(tableRow(row)));
 
-            if (Objects.nonNull(row)) {
-                row.forEach(cell -> tableRow.appendChild(HtmlElement.td()
-                        .appendChild(HtmlElement.small("", cell))));
-            }
-
-            tableBody.appendChild(tableRow);
-        });
-
-        return HtmlElement.div("container table-container")
-                .appendChild(HtmlElement.table("table table-sm table-bordered text-secondary p-0 mb-1")
+        return HtmlElement.div(TABLE_CONTAINER_CLASSES)
+                .appendChild(HtmlElement.table(TABLE_CLASSES)
                         .appendChild(tableBody));
     }
 
@@ -882,7 +698,10 @@ public final class ReportElementHelper {
         }
 
         final List<List<String>> tableRows = rows.stream()
-                .map(row -> List.of(row.key(), row.value()))
+                .map(row -> List.of(
+                        HtmlElement.nullSafe(row.key()),
+                        HtmlElement.nullSafe(row.value())
+                ))
                 .toList();
 
         return table(tableRows);
@@ -893,12 +712,12 @@ public final class ReportElementHelper {
     }
 
     public static Element sectionCard(final String title) {
-        return HtmlElement.div("w-100 card p-1 mt-2 text-secondary border-gray")
-                .appendChild(HtmlElement.small("border-bottom p-1 mb-2", title));
+        return HtmlElement.div(SECTION_CARD_CLASSES)
+                .appendChild(HtmlElement.small(SECTION_TITLE_CLASSES, title));
     }
 
     public static Element detailsContainer(final Element summary, final List<Element> contentList) {
-        final Element details = HtmlElement.details("p-1 mb-2 w-100 border shadow rounded border-gray")
+        final Element details = HtmlElement.details(DETAILS_CLASSES)
                 .appendChild(summary);
 
         HtmlElement.appendAll(details, contentList);
@@ -909,110 +728,427 @@ public final class ReportElementHelper {
     }
 
     public static Element row(final Element content) {
-        return HtmlElement.div("row justify-content-center")
+        return HtmlElement.div(ROW_CENTER_CLASSES)
                 .appendChild(content);
     }
 
     public static Element badge(final String text) {
-        return HtmlElement.small("text-info badge border mr-1 fw-normal", text);
+        return HtmlElement.small(BADGE_CLASSES, text);
     }
 
-    private static Element logWarningsBadge(final String text) {
-        return HtmlElement.small("text-orange ml-1 badge border border-gray fw-normal runtime-badge", text);
+    public static Element stepStatusBadge(
+            final Status status,
+            final boolean hasErrors,
+            final boolean hasException
+    ) {
+        if (isFailed(status, hasException)) {
+            return statusFailedIcon();
+        }
+
+        if (isPassed(status)) {
+            return hasErrors
+                    ? statusWarningIcon()
+                    : statusSuccessIcon();
+        }
+
+        return statusWarningIcon();
     }
 
-    private static Element logErrorsBadge(final String text) {
-        return HtmlElement.small("text-danger ml-1 badge border border-gray fw-normal runtime-badge", text);
+    public record KeyValueRow(String key, String value) {
+    }
+
+    // -------------------------------------------------------------------------
+    // Document structure
+    // -------------------------------------------------------------------------
+
+    private static Element buildHead() {
+        return HtmlElement.head()
+                .appendChild(HtmlElement.meta("text/html; charset=UTF-8"))
+                .appendChild(HtmlElement.title(REPORT_TITLE))
+                .appendChild(ReportStyle.styleElement());
+    }
+
+    private static Element buildBody(final TestContext testContext) {
+        return HtmlElement.body()
+                .appendChild(buildReportContainer(testContext))
+                .appendChild(HtmlElement.div("content-margin"));
+    }
+
+    private static Element buildReportContainer(final TestContext testContext) {
+        return HtmlElement.div(CONTENT_CONTAINER_CLASSES)
+                .appendChild(HtmlElement.div("row mb-3"))
+                .appendChild(HtmlElement.div(CONTENT_CARD_CLASSES)
+                        .appendChild(buildScenarioHeader(testContext))
+                        .appendChild(buildScenarioBody(testContext)));
+    }
+
+    // -------------------------------------------------------------------------
+    // Scenario section
+    // -------------------------------------------------------------------------
+
+    private static Element buildScenarioHeader(final TestContext testContext) {
+        return HtmlElement.div(CARD_HEADER_CONTAINER_CLASSES)
+                .appendChild(HtmlElement.div(CARD_HEADER_CLASSES)
+                        .appendChild(testStatusBadge(testContext.getStatus()))
+                        .appendChild(scenarioTitle(testContext.getName()))
+                        .appendChild(scenarioBadges(testContext)));
+    }
+
+    private static Element buildScenarioBody(final TestContext testContext) {
+        final Element body = HtmlElement.div(CARD_BODY_CLASSES);
+
+        testContext.getStepContextMap()
+                .values()
+                .forEach(stepContext -> body.appendChild(step(stepContext)));
+
+        body.appendChild(separator());
+        body.appendChild(buildMoreInfoSection(testContext));
+
+        return body;
+    }
+
+    private static Element scenarioTitle(final String scenarioName) {
+        return HtmlElement.withClasses(HtmlElement.element("h5"), "text-secondary fs-4 mb-2 p-1 border-bottom")
+                .text(HtmlElement.nullSafe(scenarioName));
+    }
+
+    private static Element scenarioBadges(final TestContext testContext) {
+        return HtmlElement.div("text-secondary row pb-1 justify-content-center")
+                .appendChild(badge("Started On: " + HtmlElement.nullSafe(testContext.getStartTime())))
+                .appendChild(badge("Total Runtime: " + HtmlElement.nullSafe(testContext.getDuration())));
+    }
+
+    private static Element testStatusBadge(final Status status) {
+        final Element statusContainer = HtmlElement.div(ROW_CENTER_CLASSES);
+
+        if (isPassed(status)) {
+            return statusContainer.appendChild(statusSuccessIcon());
+        }
+
+        return statusContainer.appendChild(statusFailedIcon());
+    }
+
+    // -------------------------------------------------------------------------
+    // Step section
+    // -------------------------------------------------------------------------
+
+    private static Element buildStepDetails(final StepContext stepContext) {
+        return HtmlElement.details(STEP_DETAILS_CLASSES)
+                .appendChild(buildStepSummary(stepContext))
+                .appendChild(stepArgumentsCard(stepContext.getStepArgument()))
+                .appendChild(stepLogsCard(stepContext.getTestRunLogs()))
+                .appendChild(stepErrorsCard(stepContext.getException()));
+    }
+
+    private static Element buildStepSummary(final StepContext stepContext) {
+        return HtmlElement.summary(SUMMARY_CLASSES)
+                .appendChild(HtmlElement.span("step-keyword", HtmlElement.nullSafe(stepContext.getKeyword())))
+                .appendChild(HtmlElement.span("text-secondary", HtmlElement.nullSafe(stepContext.getName())))
+                .appendChild(stepStatusBadge(
+                        stepContext.getStatus(),
+                        hasLogWarningsOrErrors(stepContext.getTestRunLogs()),
+                        Objects.nonNull(stepContext.getException())
+                ))
+                .appendChild(HtmlElement.small(RUNTIME_BADGE_CLASSES, durationText(stepContext.getDuration())));
+    }
+
+    private static boolean hasLogWarningsOrErrors(final List<TestLog> logs) {
+        return Objects.nonNull(logs) && logs.stream().anyMatch(TestLog::hasErrors);
+    }
+
+    // -------------------------------------------------------------------------
+    // More Info section
+    // -------------------------------------------------------------------------
+
+    private static Element buildMoreInfoSection(final TestContext testContext) {
+        final Element summary = moreInfoSummary();
+        final Element details = HtmlElement.details(DETAILS_CLASSES);
+
+        appendAppVersion(details, testContext);
+        appendAmlAppLogs(details, summary, testContext);
+        appendVpcSequenceLogs(details, summary, testContext);
+        appendExecutionMetadata(details, testContext);
+        appendPreviousFailedStep(details, summary, testContext);
+
+        details.prependChild(summary);
+
+        return row(details);
+    }
+
+    private static Element moreInfoSummary() {
+        return HtmlElement.summary(SUMMARY_CLASSES)
+                .appendChild(HtmlElement.span("text-info", "More Info"));
+    }
+
+    private static void appendAppVersion(final Element details, final TestContext testContext) {
+        if (Objects.nonNull(testContext.getAppVersion())) {
+            details.appendChild(moreInfoContent("App Version", testContext.getAppVersion()));
+        }
+    }
+
+    private static void appendAmlAppLogs(
+            final Element details,
+            final Element summary,
+            final TestContext testContext
+    ) {
+        final List<TestLog> logs = testContext.getAmlAppLogs();
+
+        if (logs.isEmpty()) {
+            return;
+        }
+
+        final boolean hasWarnings = logs.stream().anyMatch(TestLog::isWarn);
+        final boolean hasErrors = logs.stream().anyMatch(TestLog::isError);
+
+        if (hasWarnings || hasErrors) {
+            summary.appendChild(statusWarningIcon());
+        }
+
+        details.appendChild(buildGroupedLogSection(
+                logs,
+                hasWarnings,
+                hasErrors,
+                "AML App Logs",
+                "All Logs"
+        ));
+    }
+
+    private static void appendVpcSequenceLogs(
+            final Element details,
+            final Element summary,
+            final TestContext testContext
+    ) {
+        final List<TestLog> logs = testContext.getVpcContextLogs();
+
+        if (logs.isEmpty()) {
+            return;
+        }
+
+        final boolean hasErrors = logs.stream().anyMatch(TestLog::isError);
+
+        if (hasErrors) {
+            summary.appendChild(statusFailedIcon());
+        }
+
+        details.appendChild(buildGroupedLogSection(
+                logs,
+                false,
+                hasErrors,
+                "VPC Sequence",
+                "*"
+        ));
+    }
+
+    private static void appendExecutionMetadata(final Element details, final TestContext testContext) {
+        details.appendChild(moreInfoContent("Test Run Count", String.valueOf(testContext.getTestExecutionCount())));
+        details.appendChild(moreInfoContent("Test Tags", String.join(" ", testContext.getTags())));
+        details.appendChild(moreInfoContent("Feature File", testContext.getFeatureFile()));
+    }
+
+    private static void appendPreviousFailedStep(
+            final Element details,
+            final Element summary,
+            final TestContext testContext
+    ) {
+        final StepContext previousFailedStepContext = testContext.getPreviousFailedStepContext();
+
+        if (Objects.isNull(previousFailedStepContext)) {
+            return;
+        }
+
+        summary.appendChild(statusWarningIcon());
+        details.appendChild(previousFailedStepContent(previousFailedStepContext));
     }
 
     private static Element moreInfoContent(final String title, final String textContent) {
-        final Element summary = HtmlElement.summary("w-100 p-1 m-0")
+        final Element summary = HtmlElement.summary(SUMMARY_CLASSES)
                 .appendChild(HtmlElement.span("text-secondary", title));
 
         final Element content = HtmlElement.div("container text-info")
-                .appendChild(HtmlElement.small("", textContent));
+                .appendChild(HtmlElement.small("", HtmlElement.nullSafe(textContent)));
 
         return detailsContainer(summary, List.of(content));
     }
 
     private static Element previousFailedStepContent(final StepContext failedStepContext) {
-        final Element failedStepElement = step(failedStepContext);
-        failedStepElement.removeClass("row");
-
-        final Element summary = HtmlElement.summary("w-100 p-1 m-0")
+        final Element summary = HtmlElement.summary(SUMMARY_CLASSES)
                 .appendChild(HtmlElement.span("text-secondary", "Previously Failed Test Step"))
                 .appendChild(statusWarningIcon());
 
-        return detailsContainer(summary, List.of(failedStepElement));
+        return detailsContainer(summary, List.of(buildStepDetails(failedStepContext)));
     }
 
-    private static Element stepLogsContainer(final List<TestLog> logs) {
+    // -------------------------------------------------------------------------
+    // Log sections
+    // -------------------------------------------------------------------------
+
+    private static Element buildGroupedLogSection(
+            final List<TestLog> logs,
+            final boolean hasWarnings,
+            final boolean hasErrors,
+            final String title,
+            final String allLogsTitle
+    ) {
+        final Element summary = HtmlElement.summary(SUMMARY_CLASSES)
+                .appendChild(HtmlElement.span("text-secondary", title));
+
+        final List<Element> content = new ArrayList<>();
+
+        if (hasErrors) {
+            final List<TestLog> errors = filterErrors(logs);
+
+            summary.appendChild(errorCountBadge(errors.size()));
+            content.add(stepLogsCard(errors, "Errors"));
+        }
+
+        if (hasWarnings) {
+            final List<TestLog> warnings = filterWarnings(logs);
+
+            summary.appendChild(warningCountBadge(warnings.size()));
+            content.add(stepLogsCard(warnings, "Warnings"));
+        }
+
+        content.add(stepLogsCard(logs, allLogsTitle));
+
+        return detailsContainer(summary, content);
+    }
+
+    private static Element buildLogsContainer(final List<TestLog> logs) {
         if (Objects.isNull(logs) || logs.isEmpty()) {
             return HtmlElement.small("", "No logs found");
         }
 
-        final Element logsContainer = HtmlElement.pre("container rounded p-2 m-0 logs-container");
+        final Element logsContainer = HtmlElement.pre(LOGS_CONTAINER_CLASSES);
 
-        logs.forEach(log -> {
-            final Element logDetails = HtmlElement.details("")
-                    .appendChild(logSummary(log));
-
-            if (Objects.nonNull(log.getTrace())) {
-                logDetails.appendChild(logBreakdownContainer(log));
-            }
-
-            logsContainer.appendChild(logDetails);
-        });
+        logs.forEach(log -> logsContainer.appendChild(logEntry(log)));
 
         return logsContainer;
     }
 
-    private static Element stepErrorContainer(final Throwable throwable) {
-        return HtmlElement.pre("container rounded p-2 m-0 text-danger errors-container",
-                HtmlElement.nullSafe(throwable.getMessage()));
+    private static Element logEntry(final TestLog log) {
+        final Element logDetails = HtmlElement.details("")
+                .appendChild(logSummary(log));
+
+        if (Objects.nonNull(log.getTrace())) {
+            logDetails.appendChild(logBreakdown(log));
+        }
+
+        return logDetails;
     }
 
     private static Element logSummary(final TestLog log) {
-        final Element logLine = HtmlElement.small("", log.logLine());
+        final String color = logColor(log);
 
-        if (log.isWarn()) {
-            return HtmlElement.summary("log-line row container")
-                    .attr("style", "color: orange;")
-                    .appendChild(logLine);
-        }
-
-        if (log.isError()) {
-            return HtmlElement.summary("log-line row container")
-                    .attr("style", "color: orangered;")
-                    .appendChild(logLine);
-        }
-
-        return HtmlElement.summary("log-line row container")
-                .attr("style", "color: lightgray;")
-                .appendChild(logLine);
+        return HtmlElement.summary(LOG_SUMMARY_CLASSES)
+                .attr("style", "color: " + color + ";")
+                .appendChild(HtmlElement.small("", log.logLine()));
     }
 
-    private static Element logBreakdownContainer(final TestLog log) {
-        final Element breakdownLineContainer = HtmlElement.div("container p-2 log-breakdown-container")
+    private static Element logBreakdown(final TestLog log) {
+        final Element breakdown = HtmlElement.div(LOG_BREAKDOWN_CONTAINER_CLASSES)
                 .appendChild(logBreakdownLine("Trace:", log.getTrace()));
 
         final List<String> args = log.getArgs();
 
         IntStream.range(0, args.size())
-                .forEach(i -> breakdownLineContainer.appendChild(logBreakdownLine("Arg" + i + ": ", args.get(i))));
+                .forEach(index -> breakdown.appendChild(
+                        logBreakdownLine("Arg" + index + ": ", args.get(index))
+                ));
 
-        return breakdownLineContainer;
+        return breakdown;
     }
 
     private static Element logBreakdownLine(final String leftText, final String rightText) {
-        return HtmlElement.pre("row border-bottom m-0 log-breakdown-row")
+        return HtmlElement.pre(LOG_BREAKDOWN_ROW_CLASSES)
                 .appendChild(HtmlElement.strong("log-breakdown-left", leftText))
-                .appendChild(HtmlElement.span("log-breakdown-right", rightText));
+                .appendChild(HtmlElement.span("log-breakdown-right", HtmlElement.nullSafe(rightText)));
+    }
+
+    private static Element buildErrorContainer(final Throwable throwable) {
+        return HtmlElement.pre(ERRORS_CONTAINER_CLASSES, HtmlElement.nullSafe(throwable.getMessage()));
+    }
+
+    private static List<TestLog> filterErrors(final List<TestLog> logs) {
+        return logs.stream()
+                .filter(TestLog::isError)
+                .toList();
+    }
+
+    private static List<TestLog> filterWarnings(final List<TestLog> logs) {
+        return logs.stream()
+                .filter(TestLog::isWarn)
+                .toList();
+    }
+
+    private static String logColor(final TestLog log) {
+        if (log.isError()) {
+            return "orangered";
+        }
+
+        if (log.isWarn()) {
+            return "orange";
+        }
+
+        return "lightgray";
+    }
+
+    // -------------------------------------------------------------------------
+    // Small reusable UI components
+    // -------------------------------------------------------------------------
+
+    private static Element textLine(final String text) {
+        return HtmlElement.div("container text-secondary")
+                .appendChild(HtmlElement.small("", HtmlElement.nullSafe(text)));
+    }
+
+    private static Element tableRow(final List<String> cells) {
+        final Element tableRow = HtmlElement.tr();
+
+        if (Objects.isNull(cells)) {
+            return tableRow;
+        }
+
+        cells.forEach(cell -> tableRow.appendChild(tableCell(cell)));
+
+        return tableRow;
+    }
+
+    private static Element tableCell(final String cell) {
+        return HtmlElement.td()
+                .appendChild(HtmlElement.small("", HtmlElement.nullSafe(cell)));
     }
 
     private static Element separator() {
         return HtmlElement.div("container")
                 .appendChild(HtmlElement.div("mb-2 pb-1 border-bottom w-100"));
+    }
+
+    private static Element warningCountBadge(final int count) {
+        return HtmlElement.small("text-orange " + FLOAT_BADGE_CLASSES, "Warnings: " + count);
+    }
+
+    private static Element errorCountBadge(final int count) {
+        return HtmlElement.small("text-danger " + FLOAT_BADGE_CLASSES, "Errors: " + count);
+    }
+
+    private static String durationText(final Duration duration) {
+        if (Objects.isNull(duration)) {
+            return "0m 0s 0ms";
+        }
+
+        return TestTimeUtils.durationToTimestamp(duration);
+    }
+
+    // -------------------------------------------------------------------------
+    // Status helpers
+    // -------------------------------------------------------------------------
+
+    private static boolean isPassed(final Status status) {
+        return Objects.nonNull(status) && status.is(Status.PASSED);
+    }
+
+    private static boolean isFailed(final Status status, final boolean hasException) {
+        return hasException || Objects.nonNull(status) && status.is(Status.FAILED);
     }
 
     private static Element statusSuccessIcon() {
@@ -1043,9 +1179,6 @@ public final class ReportElementHelper {
                     </svg>
                 </span>
                 """);
-    }
-
-    public record KeyValueRow(String key, String value) {
     }
 }
 
